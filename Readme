@@ -1,0 +1,12 @@
+Install the required packages for video to audio and text
+pip install moviepy SpeechRecognition pydub openai-whisper
+
+Usage - audio-to-text_v0.1: 
+# Process video file
+python audio-to-text_v0.1.py -i input.mp4 -o transcript.txt
+
+# Process audio file
+python audio-to-text_v0.1.py -i audio.wav -l fr-FR
+
+# Direct video processing with Whisper
+python audio-to-text_v0.1.py -i presentation.mkv -o output.txt
