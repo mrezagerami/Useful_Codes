@@ -1,0 +1,121 @@
+import argparse
+import speech_recognition as sr
+from pydub import AudioSegment
+import tempfile
+import os
+import wave
+
+def validate_google_wav(file_path):
+    """Ensure WAV meets Google's strict requirements"""
+    try:
+        with wave.open(file_path, 'rb') as wf:
+            if wf.getnchannels() != 1:
+                raise ValueError("Audio must be mono")
+            if wf.getsampwidth() != 2:
+                raise ValueError("Must be 16-bit PCM")
+            if wf.getframerate() not in [8000, 16000, 44100, 48000]:
+                raise ValueError("Unsupported sample rate")
+            return True
+    except Exception as e:
+        print(f"Invalid WAV format: {e}")
+        return False
+
+def convert_audio(input_path, output_path):
+    """Convert to Google-compliant WAV using FFmpeg parameters"""
+    try:
+        # Use FFmpeg directly through pydub for better control
+        audio = AudioSegment.from_file(input_path)
+        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+        
+        # Export with explicit FFmpeg parameters
+        audio.export(output_path, format="wav",
+                     codec="pcm_s16le",
+                     parameters=["-ar", "16000", "-ac", "1"])
+        
+        if not validate_google_wav(output_path):
+            raise ValueError("Output validation failed")
+            
+        return True
+    except Exception as e:
+        print(f"Conversion failed: {str(e)}")
+        print("Tip: Check input file format and FFmpeg installation")
+        return False
+
+def transcribe_audio(audio_path, lang='en-US'):
+    """Robust transcription with chunking and format validation"""
+    r = sr.Recognizer()
+    texts = []
+    
+    try:
+        with sr.AudioFile(audio_path) as source:
+            chunk_length = 30  # Process in 30-second chunks
+            
+            while True:
+                audio_chunk = r.record(source, duration=chunk_length)
+                if len(audio_chunk.get_raw_data()) == 0:
+                    break
+                    
+                try:
+                    text = r.recognize_google(audio_chunk, language=lang)
+                    texts.append(text)
+                except sr.UnknownValueError:
+                    print(f"Chunk {len(texts)+1}: Speech unclear")
+                except sr.RequestError as e:
+                    print(f"API Error: {e}")
+                    return None
+
+        return "\n".join(texts) if texts else None
+        
+    except Exception as e:
+        print(f"Transcription error: {e}")
+        return None
+
+def main():
+    parser = argparse.ArgumentParser(description="Reliable Audio Transcription")
+    parser.add_argument("-i", "--input", required=True, help="Input audio file")
+    parser.add_argument("-o", "--output", help="Output text file")
+    parser.add_argument("-l", "--lang", default="en-US", 
+                      help="BCP-47 language code (e.g., en-US, fr-FR)")
+    args = parser.parse_args()
+
+    # Create temporary workspace
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+        temp_path = temp_file.name
+
+    try:
+        # Conversion stage
+        if not convert_audio(args.input, temp_path):
+            return
+
+        # Transcription stage
+        result = transcribe_audio(temp_path, args.lang)
+        
+        if not result:
+            print("Google transcription failed - trying offline method...")
+            try:
+                from whisper import load_model, transcribe
+                model = load_model("base")
+                result = transcribe(model, args.input)["text"]
+            except ImportError:
+                print("Install Whisper for offline transcription:")
+                print("pip install openai-whisper")
+                return
+            except Exception as e:
+                print(f"Whisper failed: {e}")
+                return
+
+        # Output handling
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(result)
+            print(f"Successfully saved to {args.output}")
+        else:
+            print("\nTranscription Result:")
+            print(result)
+
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+if __name__ == "__main__":
+    main()
