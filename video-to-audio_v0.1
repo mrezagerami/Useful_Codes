@@ -1,0 +1,13 @@
+import moviepy as mp
+
+def video_to_audio(video_path, output_audio_path):
+    # Load the video file
+    video = mp.VideoFileClip(video_path)
+    # Extract audio and save it as a separate file
+    video.audio.write_audiofile(output_audio_path)
+    print(f"Audio saved to {output_audio_path}")
+
+# Example usage
+video_path = "d:/videos/Filename.wmv"  # Replace with your video file path
+audio_output_path = "d:/videos/filename.wav"     # Specify desired output audio file path
+video_to_audio(video_path, audio_output_path)
